@@ -61,9 +61,12 @@ split_matrix <- function(mat,rowspergroup=NULL,nsplits=NULL,shuffle=TRUE) {
 #' @importFrom stats runif
 #' @importFrom methods new
 #' @importFrom conf.design factorize
+#' @importFrom DoE.base oa.design
 #'
 #' @examples
 #' s <- sFFLHD$new(D=2,L=3)
+#' s$get.batch()
+#' s <- sFFLHD$new(D=2,L=4)
 #' s$get.batch()
 sFFLHD <- setRefClass('sFFLHD',
   fields = list(D='numeric',L='numeric',

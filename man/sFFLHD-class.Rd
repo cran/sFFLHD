@@ -64,5 +64,7 @@ Requires extra optimization.}
 \examples{
 s <- sFFLHD$new(D=2,L=3)
 s$get.batch()
+s <- sFFLHD$new(D=2,L=4)
+s$get.batch()
 }
 

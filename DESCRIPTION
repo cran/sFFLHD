@@ -1,7 +1,7 @@
 Package: sFFLHD
 Type: Package
 Title: Sequential Full Factorial-Based Latin Hypercube Design
-Version: 0.1.0
+Version: 0.1.1
 Author: Collin Erickson
 Maintainer: Collin Erickson <collinberickson@gmail.com>
 Description: Gives design points from a sequential full factorial-based
@@ -11,8 +11,9 @@ Description: Gives design points from a sequential full factorial-based
 License: GPL-3
 LazyData: TRUE
 RoxygenNote: 5.0.1
-Imports: DoE.base, methods, stats, conf.design
+Imports: methods, stats, conf.design
+Depends: DoE.base
 NeedsCompilation: no
-Packaged: 2016-08-26 23:30:44 UTC; collin
+Packaged: 2016-09-21 14:21:02 UTC; cbe117
 Repository: CRAN
-Date/Publication: 2016-08-27 07:52:49
+Date/Publication: 2016-09-21 16:29:57

@@ -3,6 +3,7 @@
 export(sFFLHD)
 export(split_matrix)
 exportClasses(sFFLHD)
+importFrom(DoE.base,oa.design)
 importFrom(conf.design,factorize)
 importFrom(methods,new)
 importFrom(stats,runif)
