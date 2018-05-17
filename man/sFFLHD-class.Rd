@@ -2,8 +2,8 @@
 % Please edit documentation in R/sFFLHD.R
 \docType{class}
 \name{sFFLHD-class}
-\alias{sFFLHD}
 \alias{sFFLHD-class}
+\alias{sFFLHD}
 \title{sFFLHD object that gives a batch of points at a time.}
 \value{
 A sFFLHD object
@@ -19,7 +19,9 @@ sFFLHD object that gives a batch of points at a time.
 \item{\code{L}}{numeric. The number of points in each batch, also the number of
 levels of each dimension. Must be set.}
 
-\item{\code{maximin}}{logical. Should maximin distance be used to space out points?}
+\item{\code{maximin}}{logical. Should maximin distance be used to space out points?
+TRUE by default. Only used while lb <= 100, not worth it once the boxes
+are very small.}
 
 \item{\code{a}}{numeric. A root of L that determines the intermediate stages.
 Is automatically set to smallest possible value, which is recommended.}
@@ -61,10 +63,11 @@ Is automatically set to smallest possible value, which is recommended.}
 \item{\code{v.shuffle}}{integer. A storage value for storing order.
 Requires extra optimization.}
 }}
+
+
 \examples{
 s <- sFFLHD$new(D=2,L=3)
 s$get.batch()
 s <- sFFLHD$new(D=2,L=4)
 s$get.batch()
 }
-

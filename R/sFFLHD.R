@@ -1,36 +1,11 @@
-#' Split a matrix by rows, based on either the number of rows per group
-#' or number of splits.
-#'
-#' @param mat A matrix to be split.
-#' @param rowspergroup  Number of rows in a group.
-#' @param nsplits Number of splits to make.
-#' @param shuffle Should the splits be shuffled before returning?
-#'
-#' @return A list of the splits of the matrix.
-#' @export
-#'
-#'
-#' @examples
-#' mat <- matrix(1:12, ncol=2)
-#' split_matrix(mat, 4, shuffle=FALSE)
-#' split_matrix(mat, 4, shuffle=TRUE)
-#' split_matrix(mat, nsplits=4, shuffle=FALSE)
-split_matrix <- function(mat,rowspergroup=NULL,nsplits=NULL,shuffle=TRUE) {
-  if(is.null(rowspergroup)) {
-    rowspergroup <- nrow(mat) / nsplits
-  } else {
-    nsplits <- nrow(mat) / rowspergroup
-  }
-  lapply(ifelse(shuffle,sample,identity)(1:nsplits),
-         function(ii){mat[((ii-1)*rowspergroup+1):(ii*rowspergroup),]})
-}
-
 #' sFFLHD object that gives a batch of points at a time.
 #'
 #' @field D numeric. The number of dimensions for the design. Must be set.
 #' @field L numeric. The number of points in each batch, also the number of
 #'  levels of each dimension. Must be set.
 #' @field maximin logical. Should maximin distance be used to space out points?
+#' TRUE by default. Only used while lb <= 100, not worth it once the boxes
+#' are very small.
 #' @field a numeric. A root of L that determines the intermediate stages.
 #' Is automatically set to smallest possible value, which is recommended.
 #' @field b integer. The batch number.
@@ -76,10 +51,15 @@ sFFLHD <- setRefClass('sFFLHD',
                 Xb = 'matrix',Vb = 'matrix',Mb = 'matrix',Wb = 'matrix',
                 A1 = 'matrix',r = 'integer',p = 'integer',Ar = 'matrix',
                 stage = 'integer',vii = 'integer',Fslices = 'list',
-                FF1.1 = 'matrix',Mb.store='matrix',v.shuffle = 'integer'
+                FF1.1 = 'matrix',Mb.store='matrix',v.shuffle = 'integer',
+                seed = 'numeric'
   ),
   methods = list(
     get.batch = function() {
+      if (length(seed) > 0) {
+        set.seed(seed)
+        seed <<- seed + 1
+      }
       if (length(stage)==0) { # initialize everything
         stage0()
       }
@@ -91,8 +71,10 @@ sFFLHD <- setRefClass('sFFLHD',
       stop('Only stage 1 and 2')
     }, # end get.batch
     stage0 = function() { # Do steps 0 and 1
-      if (length(D) == 0 | length(L) == 0) {stop('D and L must be specified')}
-      if (D == 1) {stop("Doesn't work in 1 dimension")}
+      if (length(D) != 1 | length(L) != 1) {stop('D and L must be specified')}
+      if (as.integer(D) != D) {stop("D must be integer")}
+      if (as.integer(L) != L) {stop("L must be integer")}
+      # if (D == 1) {stop("Doesn't work in 1 dimension")} # Now it does mostly
       if (length(a)==0) {
         a.fac <- factorize(L)
         if(all(a.fac==a.fac[1])) {a <<- a.fac[1]}
@@ -111,12 +93,47 @@ sFFLHD <- setRefClass('sFFLHD',
       Wb <<- matrix(NA,nrow=0,ncol=D)
       Xb <<- matrix(NA,nrow=0,ncol=D)
       stage <<- 1L # stage 1 is step 2, stage 2 is step 4
-      # make sure D,L,a are all set
-      if (length(D)==0 | length(L)==0 | length(a)==0) {
-        stop('D, L, and a must be set when creating new object')
-      }
+      # make sure D,L,a are all set REMOVED since D and L are already checked, and a should be good
+      # if (length(D)==0 | length(L)==0 | length(a)==0) {
+      #   stop('D, L, and a must be set when creating new object')
+      # }
+
       # get first OA
-      OA <- DoE.base::oa.design(nruns=L^2,nfactors=D+1,nlevels=L, columns="min3")
+      # browser()
+
+      # Don't just create design because sometimes it tries to do
+      #  a massive full factorial instead with 1e8 entries, which is stupid
+      # OA <- try(DoE.base::oa.design(nruns=L^2, nfactors=D+1, nlevels=L, columns="min3"))
+
+      # Instead check for it first
+      OA.avail <- DoE.base::show.oas(nruns=L^2, factors=list(nlevels=L, number=D+1), show=0)
+      if (!is.null(OA.avail)) {
+        OA <- DoE.base::oa.design(nruns=L^2, nfactors=D+1, nlevels=L, columns="min3")
+      }
+
+      # If it wasn't available, then check other L to tell user what to try instead
+      # if (inherits(OA, "try-error")) {
+      else {
+        #avail.oas <- DoE.base::show.oas(factors=list(nlevels=L, number=D+1))
+        # Check L in 2 to 16
+        avail.oas <- sapply(2:16,
+               function(i) {
+                 capture.output(av <- DoE.base::show.oas(nruns=i^2, factors=list(nlevels=i, number=D+1), show=0))
+                 !is.null(av)
+               }
+        )
+
+        if (all(!avail.oas)) {
+          stop("No OA can be found for L in 2 to 16 for given D")
+        } else {
+          avail.Ls <- (2:16)[avail.oas]
+          # nruns <- avail.oas$nruns[1]
+          # message(paste0("Found OA but it requires ", nruns, " runs"))
+          stop(paste("Try L one of",paste(avail.Ls, collapse=', '),"instead"))
+        }
+        # OA <- DoE.base::oa.design(nruns=nruns, nfactors=D+1, nlevels=L, columns="min3")
+      }
+
       OA0.5 <- apply(as.matrix(OA),1:2,as.integer)
       OA1 <- OA0.5[sample(1:L^2),]
       OA2 <- OA1[,sample(1:(D+1))]
@@ -124,19 +141,24 @@ sFFLHD <- setRefClass('sFFLHD',
       A1 <<- OA3[,2:(D+1), drop=F]
       r <<- 1L
       p <<- 1L
-      maximin <<- TRUE # Seems to work, slows it down a little bit
+      # Set maximin TRUE if not given in
+      if (length(maximin) == 0) {
+        maximin <<- TRUE # Seems to work, slows it down a little bit
+      }
       # end initialization
     }, # end stage0 function
     stage1 = function() { # run steps 2 and 3
       if (p==1L) { # Get the Ar
         if(D==2) { # Had a problem when D==2, v was c(0,0,0,0) instead of c(0,0)
           v <- c(0,0)
-        } else {
+        } else if (D==1) {
+          v <- c(0)
+        } else { # Only works for D > 2
           v <- c(0,0, ((r-1)%/%(L^((D-2-1):0))) %% L)
         }
         Ar <<- sweep(A1,2,v,'+')%%L + 1 #now OAs start at 0, not sure if right, maybe add 1??????
       }
-      Arp <- Ar[((p-1)*L+1):(p*L),]
+      Arp <- Ar[((p-1)*L+1):(p*L), , drop=FALSE]
       if(nb+L > lb) { # Xb reached an LHD, increase small grid
         lb <<- lb * a
         Vb <<- ceiling(Xb*lb)
@@ -162,7 +184,7 @@ sFFLHD <- setRefClass('sFFLHD',
       } else{
         p <<- p + 1L
       }
-      return(Xb[n1:n2,])
+      return(Xb[n1:n2, , drop=FALSE])
     }, # end stage1 function
     stage2 = function() { # run steps 4 and 5
       if (vii==1L & r==1L & p==1L) { # If first time through, set values
@@ -172,8 +194,15 @@ sFFLHD <- setRefClass('sFFLHD',
       }
       if (r==1L & p==1L) { # If new vii, set Fslices for it
         v <- (v.shuffle[vii]%/%(a^((D-1):0))) %% a
-        FFv <- FF1.1 + sweep(Mb.store,2,v,'+')%%a
-        Fslices1 <- split_matrix(FFv,nsplits=L^(D-2)*(Lb/a/L)^D)
+
+        # Messed things up around here trying to get D=1 to work, shouldn't affect D>=2 though
+        if (D>1 && (L^(D-2)*(Lb/a/L)^D != (nrow(Mb.store)/L^2))) {
+          stop("Something is wrong here, change it back to old version #85205")
+        }
+        FFv <- FF1.1 + sweep(Mb.store,2,v,'+')%%a # ; print(c(L^(D-2)*(Lb/a/L)^D, nrow(Mb.store)/L^2)); #;browser()
+        # Fslices1 <- split_matrix(FFv,nsplits=L^(D-2)*(Lb/a/L)^D) # Old, correct version for D>=2. Changed to try to get D=1.
+        Fslices1 <- split_matrix(FFv,nsplits=nrow(Mb.store) / L^2) # This is correct except for maybe D=1
+
         Fslices <<- lapply(Fslices1,split_matrix,L)
       }
       if (nb+L > lb) { # increase grid if reached LHS
@@ -206,7 +235,7 @@ sFFLHD <- setRefClass('sFFLHD',
           }
         }
       }
-      return(Xb[n1:n2,])
+      return(Xb[n1:n2, , drop=FALSE])
     }, # end stage2 function
     NB = function(G,eps=NULL) {
       # Add batch NB(G,eps,b)
@@ -232,23 +261,38 @@ sFFLHD <- setRefClass('sFFLHD',
           Wb[nb+1+i-1,j] <<- floor(L * G[i,j] / Lb)
           Xb[nb+1+i-1,j] <<- (e - e2) / lb
         }
-        if (maximin && (b > 0 | i > 1)) { # all but first point
+        # If maximin, optimize to space them out
+        # Don't do it on first point
+        # Or when lb is big, not worth it then
+        if (maximin && (b > 0 | i > 1) && lb <= 100) {
           optim.func <- function(xx) {
             -min(rowSums(sweep(Xb[1:(nb+i-1),,drop=FALSE], 2, (Vb[nb+i,]-xx)/lb)^2))
           }
           # don't let it get exactly in any corner, might end up in wrong square
-          opt.out <- optim(rep(.5,D), optim.func, lower=rep(1e-4, D), upper=rep(1-1e-4, D), method="L-BFGS-B")
+          opt.out <- optim(rep(.5,D), optim.func,
+                           lower=rep(1e-4, D), upper=rep(1-1e-4, D),
+                           method="L-BFGS-B", control=list(factr=1e9))
           Xb[nb+i,] <<- (Vb[nb+i,]-opt.out$par)/lb
         }
       }
     }, # end stage3 function
     get.batches = function(num) { # get multiple batches at once
+      if (num < 1 || abs(num - as.integer(num)) > 1e-8) {
+        stop(paste0("Can only get positive integer number of batches, not ", num))
+      }
       out <- matrix(nrow=0,ncol=D)
       for (i in 1:num) {out <- rbind(out,get.batch())}
       return(out)
     }, # end get.batches function
     get.batches.to.golden = function() {
-      get.batches((Lb^D-dim(Xb)[1])/L)
+      if (length(Lb) == 0) { # Need this in case no batches have been taken yet
+                             #  since Lb will be numeric(0) and give issue
+        b1 <- get.batch()
+        b2 <- get.batches((Lb^max(D,2)-dim(Xb)[1])/L) # Add max for D=1
+        rbind(b1, b2)
+      } else {
+        get.batches((Lb^max(D,2) - dim(Xb)[1]) / L) # Add max for D=1
+      }
     } # end get.batches.to.golden function
   )
 )
